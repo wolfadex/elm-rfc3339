@@ -1,4 +1,4 @@
-# elm-rfc3339
+# elm-rfc3339 [![Build Status](https://github.com/wolfadex/elm-rfc3339/workflows/CI/badge.svg)](https://github.com/wolfadex/elm-rfc3339/actions?query=branch%3Amain)
 
 Parses a string into an [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) date time format, or convert back into a string.
 
