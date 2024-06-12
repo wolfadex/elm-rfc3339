@@ -4,7 +4,9 @@
     "description": "A package for parsing RFC 3339 formatted date times.",
     "scripts": {
         "test": "elm-test",
-        "review": "elm-review"
+        "review": "elm-review",
+        "postinstall": "elm-tooling install",
+        "docs": "elm-doc-preview"
     },
     "author": "Wolfgang Schuster",
     "license": "BSD-3-Clause",
