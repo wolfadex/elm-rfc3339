@@ -24,7 +24,9 @@ type alias Parser a =
 
 
 type Context
-    = Context_TODO
+    = ParsingDate
+    | ParsingTime
+    | ParsingOffset
 
 
 type Problem
@@ -47,7 +49,14 @@ type Problem
     | PrbInvalidDay
 
 
-{-| -}
+{-| Represents one of:
+
+  - **local time**: e.g. 09:15:22
+  - **local date**: e.g. 1970-11-21
+  - **local date time**: e.g. 1970-11-21T09:15:22
+  - **date time with offset**: e.g. 1970-11-21T09:15:22+01:00
+
+-}
 type DateTime
     = DateTimeOffset
         { year : Int
@@ -78,7 +87,8 @@ type DateTime
         }
 
 
-{-| -}
+{-| All of the ways a parsing can fail.
+-}
 type Error
     = ExpectedDateSeparator
     | ExpectedDateTimeSeparator
@@ -99,10 +109,12 @@ type Error
     | InvalidDay
 
 
-{-| -}
+{-| Attempts to convert a `String` to a `DateTime`
+-}
 parse : String -> Result (List Error) DateTime
 parse input =
     let
+        useDateParser : Bool
         useDateParser =
             input
                 |> String.left 3
@@ -174,32 +186,21 @@ toError deadEnd =
             InvalidDay
 
 
-
--- dateTimeParser : Parser DateTime
--- dateTimeParser =
---     Parser.Advanced.oneOf
---         [ dateTimeFullParser
---             |> Parser.Advanced.backtrackable
---         , Parser.Advanced.succeed TimeLocal
---             |= timeLocalParser
---         ]
-
-
 dateTimeParser : Parser DateTime
 dateTimeParser =
     Parser.Advanced.succeed
-        (\year month day maybeTimeOffset ->
+        (\date maybeTimeOffset ->
             case maybeTimeOffset of
                 Nothing ->
-                    DateLocal { year = year, month = month, day = day }
+                    DateLocal date
 
                 Just ( time, maybeOffset ) ->
                     case maybeOffset of
                         Nothing ->
                             DateTimeLocal
-                                { year = year
-                                , month = month
-                                , day = day
+                                { year = date.year
+                                , month = date.month
+                                , day = date.day
                                 , hour = time.hour
                                 , minute = time.minute
                                 , second = time.second
@@ -207,30 +208,16 @@ dateTimeParser =
 
                         Just offset ->
                             DateTimeOffset
-                                { year = year
-                                , month = month
-                                , day = day
+                                { year = date.year
+                                , month = date.month
+                                , day = date.day
                                 , hour = time.hour
                                 , minute = time.minute
                                 , second = time.second
                                 , offset = offset
                                 }
         )
-        |= parseDigits 4
-        |. Parser.Advanced.token (Parser.Advanced.Token "-" PrbExpectedDateSeparator)
-        |= (parseDigits 2
-                |> Parser.Advanced.andThen
-                    (\int ->
-                        case intToMonth int of
-                            Nothing ->
-                                Parser.Advanced.problem PrbInvalidMonth
-
-                            Just month ->
-                                Parser.Advanced.succeed month
-                    )
-           )
-        |. Parser.Advanced.token (Parser.Advanced.Token "-" PrbExpectedDateSeparator)
-        |= parseDigitsInRange 2 { min = 1, max = 31 } PrbInvalidDay
+        |= dateParser
         |= Parser.Advanced.oneOf
             [ Parser.Advanced.succeed (\time maybeOffset -> Just ( time, maybeOffset ))
                 |. Parser.Advanced.oneOf
@@ -254,6 +241,7 @@ dateTimeParser =
 
                     DateLocal date ->
                         let
+                            maxDays : Int
                             maxDays =
                                 daysInMonth date
                         in
@@ -265,6 +253,7 @@ dateTimeParser =
 
                     DateTimeLocal date ->
                         let
+                            maxDays : Int
                             maxDays =
                                 daysInMonth date
                         in
@@ -276,6 +265,7 @@ dateTimeParser =
 
                     DateTimeOffset date ->
                         let
+                            maxDays : Int
                             maxDays =
                                 daysInMonth date
                         in
@@ -285,6 +275,33 @@ dateTimeParser =
                         else
                             Parser.Advanced.succeed dateTime
             )
+
+
+dateParser : Parser { year : Int, month : Time.Month, day : Int }
+dateParser =
+    Parser.Advanced.succeed
+        (\year month day ->
+            { year = year
+            , month = month
+            , day = day
+            }
+        )
+        |= parseDigits 4
+        |. Parser.Advanced.token (Parser.Advanced.Token "-" PrbExpectedDateSeparator)
+        |= (parseDigits 2
+                |> Parser.Advanced.andThen
+                    (\int ->
+                        case intToMonth int of
+                            Nothing ->
+                                Parser.Advanced.problem PrbInvalidMonth
+
+                            Just month ->
+                                Parser.Advanced.succeed month
+                    )
+           )
+        |. Parser.Advanced.token (Parser.Advanced.Token "-" PrbExpectedDateSeparator)
+        |= parseDigitsInRange 2 { min = 1, max = 31 } PrbInvalidDay
+        |> Parser.Advanced.inContext ParsingDate
 
 
 offsetParser : Parser { hour : Int, minute : Int }
@@ -303,6 +320,7 @@ offsetParser =
             |. Parser.Advanced.token (Parser.Advanced.Token ":" PrbExpectedOffsetSeparator)
             |= minuteParser
         ]
+        |> Parser.Advanced.inContext ParsingOffset
 
 
 timeLocalParser :
@@ -350,6 +368,7 @@ timeLocalParser =
                                         Parser.Advanced.succeed f
                     )
            )
+        |> Parser.Advanced.inContext ParsingTime
 
 
 parseDigits : Int -> Parser Int
@@ -497,7 +516,7 @@ minuteParser =
 
 isLeapYear : Int -> Bool
 isLeapYear year =
-    modBy 400 year == 0 || (modBy 4 year == 0 && not (modBy 100 year == 0))
+    modBy 400 year == 0 || (modBy 4 year == 0 && (modBy 100 year /= 0))
 
 
 daysInMonth : { a | year : Int, month : Time.Month } -> Int

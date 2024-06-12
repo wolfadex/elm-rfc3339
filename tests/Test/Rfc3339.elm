@@ -1,9 +1,8 @@
 module Test.Rfc3339 exposing (suite)
 
 import Expect
-import Parser.Advanced
 import Rfc3339
-import Test exposing (..)
+import Test exposing (Test, describe, test)
 import Time
 
 
