@@ -116,12 +116,16 @@ parse input =
     let
         useDateParser : Bool
         useDateParser =
-            input
-                |> String.left 3
-                |> String.dropLeft 2
-                |> String.uncons
-                |> Maybe.map (\( char, _ ) -> Char.isDigit char)
-                |> Maybe.withDefault True
+            case
+                input
+                    |> String.slice 2 3
+                    |> String.uncons
+            of
+                Nothing ->
+                    True
+
+                Just ( char, _ ) ->
+                    Char.isDigit char
     in
     Result.mapError (List.map toError) <|
         if useDateParser then
