@@ -373,7 +373,8 @@ timeLocalParser =
 
 parseDigits : Int -> Parser Int
 parseDigits size =
-    Parser.Advanced.loop ( size, [] ) parseDigitsHelper
+    Parser.Advanced.loop size parseDigitsHelper
+        |> Parser.Advanced.getChompedString
         |> Parser.Advanced.andThen
             (\digits ->
                 case String.toInt digits of
@@ -387,7 +388,8 @@ parseDigits size =
 
 parseDigitsInRange : Int -> { min : Int, max : Int } -> Problem -> Parser Int
 parseDigitsInRange size limits limitProblem =
-    Parser.Advanced.loop ( size, [] ) parseDigitsHelper
+    Parser.Advanced.loop size parseDigitsHelper
+        |> Parser.Advanced.getChompedString
         |> Parser.Advanced.andThen
             (\digits ->
                 case String.toInt digits of
@@ -406,19 +408,17 @@ parseDigitsInRange size limits limitProblem =
             )
 
 
-parseDigitsHelper : ( Int, List String ) -> Parser (Parser.Advanced.Step ( Int, List String ) String)
-parseDigitsHelper ( leftToChomp, revDigits ) =
+parseDigitsHelper : Int -> Parser (Parser.Advanced.Step Int ())
+parseDigitsHelper leftToChomp =
     if leftToChomp < 0 then
         Parser.Advanced.problem PrbInvalidNegativeDigits
 
     else if leftToChomp > 0 then
-        Parser.Advanced.succeed ()
+        Parser.Advanced.succeed (Parser.Advanced.Loop (leftToChomp - 1))
             |. Parser.Advanced.chompIf Char.isDigit PrbExpectedDigit
-            |> Parser.Advanced.getChompedString
-            |> Parser.Advanced.map (\digit -> Parser.Advanced.Loop ( leftToChomp - 1, digit :: revDigits ))
 
     else
-        Parser.Advanced.succeed (Parser.Advanced.Done (String.concat (List.reverse revDigits)))
+        Parser.Advanced.succeed (Parser.Advanced.Done ())
 
 
 intToMonth : Int -> Maybe Time.Month
