@@ -516,7 +516,7 @@ minuteParser =
 
 isLeapYear : Int -> Bool
 isLeapYear year =
-    modBy 400 year == 0 || (modBy 4 year == 0 && (modBy 100 year /= 0))
+    modBy 4 year == 0 && (modBy 100 year /= 0 || modBy 400 year == 0)
 
 
 daysInMonth : { a | year : Int, month : Time.Month } -> Int
