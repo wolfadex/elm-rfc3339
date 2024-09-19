@@ -1,4 +1,4 @@
-module Test.Rfc3339 exposing (suite)
+module Test.Rfc3339 exposing (rounding, suite)
 
 import Date
 import Expect
@@ -284,4 +284,22 @@ printing =
                     |> Rfc3339.parse
                     |> Result.map Rfc3339.toString
                     |> Expect.equal (Ok "1970-01-01T00:00:00-01:23")
+        ]
+
+
+rounding : Test
+rounding =
+    describe "can round correctly"
+        [ test "right after midnight" <|
+            \() ->
+                "00:00:00.00001"
+                    |> Rfc3339.parse
+                    |> Result.map Rfc3339.toString
+                    |> Expect.equal (Ok "00:00:00")
+        , test "right before midnight" <|
+            \() ->
+                "23:59:59.9996"
+                    |> Rfc3339.parse
+                    |> Result.map Rfc3339.toString
+                    |> Expect.equal (Ok "23:59:59.999")
         ]
