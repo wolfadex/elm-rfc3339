@@ -15,38 +15,20 @@ module Rfc3339 exposing
 
 -}
 
+import Date
 import Parser.Advanced exposing ((|.), (|=))
 import Time
+import Time.Extra
 
 
 type alias Parser a =
-    Parser.Advanced.Parser Context Problem a
+    Parser.Advanced.Parser Context Error a
 
 
 type Context
     = ParsingDate
     | ParsingTime
     | ParsingOffset
-
-
-type Problem
-    = PrbExpectedDateSeparator
-    | PrbExpectedDateTimeSeparator
-    | PrbExpectedTimeSeparator
-    | PrbExpectedOffsetSeparator
-    | PrbInvalidMonth
-    | PrbDayTooLarge Int
-    | PrbExpectedZuluOffset
-    | PrbExpectedOffsetSign
-    | PrbExpectedFractionalSecondSeparator
-    | PrbExpectedDigit
-    | PrbExpectedAFloat
-    | PrbExpectedAnInt
-    | PrbInvalidNegativeDigits
-    | PrbInvalidHour
-    | PrbInvalidMinute
-    | PrbInvalidSecond
-    | PrbInvalidDay
 
 
 {-| Represents one of:
@@ -59,31 +41,16 @@ type Problem
 -}
 type DateTime
     = DateTimeOffset
-        { year : Int
-        , month : Time.Month
-        , day : Int
-        , hour : Int
-        , minute : Int
-        , second : Float
+        { instant : Time.Posix
         , offset : { hour : Int, minute : Int }
         }
-    | DateTimeLocal
-        { year : Int
-        , month : Time.Month
-        , day : Int
-        , hour : Int
-        , minute : Int
-        , second : Float
-        }
-    | DateLocal
-        { year : Int
-        , month : Time.Month
-        , day : Int
-        }
+    | DateTimeLocal Time.Extra.Parts
+    | DateLocal Date.Date
     | TimeLocal
         { hour : Int
         , minute : Int
-        , second : Float
+        , second : Int
+        , millisecond : Int
         }
 
 
@@ -100,7 +67,6 @@ type Error
     | ExpectedOffsetSign
     | ExpectedFractionalSecondSeparator
     | ExpectedDigit
-    | ExpectedAFloat
     | ExpectedAnInt
     | InvalidNegativeDigits
     | InvalidHour
@@ -127,67 +93,12 @@ parse input =
                 Just ( char, _ ) ->
                     Char.isDigit char
     in
-    Result.mapError (List.map toError) <|
+    Result.mapError (List.map .problem) <|
         if useDateParser then
             Parser.Advanced.run dateTimeParser input
 
         else
             Parser.Advanced.run (Parser.Advanced.map TimeLocal timeLocalParser) input
-
-
-toError : Parser.Advanced.DeadEnd Context Problem -> Error
-toError deadEnd =
-    case deadEnd.problem of
-        PrbExpectedDateSeparator ->
-            ExpectedDateSeparator
-
-        PrbExpectedDateTimeSeparator ->
-            ExpectedDateTimeSeparator
-
-        PrbExpectedTimeSeparator ->
-            ExpectedTimeSeparator
-
-        PrbExpectedOffsetSeparator ->
-            ExpectedOffsetSeparator
-
-        PrbInvalidMonth ->
-            InvalidMonth
-
-        PrbDayTooLarge amt ->
-            DayTooLarge amt
-
-        PrbExpectedZuluOffset ->
-            ExpectedZuluOffset
-
-        PrbExpectedOffsetSign ->
-            ExpectedOffsetSign
-
-        PrbExpectedFractionalSecondSeparator ->
-            ExpectedFractionalSecondSeparator
-
-        PrbExpectedDigit ->
-            ExpectedDigit
-
-        PrbExpectedAFloat ->
-            ExpectedAFloat
-
-        PrbExpectedAnInt ->
-            ExpectedAnInt
-
-        PrbInvalidNegativeDigits ->
-            InvalidNegativeDigits
-
-        PrbInvalidHour ->
-            InvalidHour
-
-        PrbInvalidMinute ->
-            InvalidMinute
-
-        PrbInvalidSecond ->
-            InvalidSecond
-
-        PrbInvalidDay ->
-            InvalidDay
 
 
 dateTimeParser : Parser DateTime
@@ -199,25 +110,25 @@ dateTimeParser =
                     DateLocal date
 
                 Just ( time, maybeOffset ) ->
+                    let
+                        parts : Time.Extra.Parts
+                        parts =
+                            { year = Date.year date
+                            , month = Date.month date
+                            , day = Date.day date
+                            , hour = time.hour
+                            , minute = time.minute
+                            , second = time.second
+                            , millisecond = time.millisecond
+                            }
+                    in
                     case maybeOffset of
                         Nothing ->
-                            DateTimeLocal
-                                { year = date.year
-                                , month = date.month
-                                , day = date.day
-                                , hour = time.hour
-                                , minute = time.minute
-                                , second = time.second
-                                }
+                            DateTimeLocal parts
 
                         Just offset ->
                             DateTimeOffset
-                                { year = date.year
-                                , month = date.month
-                                , day = date.day
-                                , hour = time.hour
-                                , minute = time.minute
-                                , second = time.second
+                                { instant = Time.Extra.partsToPosix (fakeZone offset) parts
                                 , offset = offset
                                 }
         )
@@ -225,9 +136,9 @@ dateTimeParser =
         |= Parser.Advanced.oneOf
             [ Parser.Advanced.succeed (\time maybeOffset -> Just ( time, maybeOffset ))
                 |. Parser.Advanced.oneOf
-                    [ Parser.Advanced.token (Parser.Advanced.Token "T" PrbExpectedDateTimeSeparator)
-                    , Parser.Advanced.token (Parser.Advanced.Token "t" PrbExpectedDateTimeSeparator)
-                    , Parser.Advanced.token (Parser.Advanced.Token " " PrbExpectedDateTimeSeparator)
+                    [ Parser.Advanced.token (Parser.Advanced.Token "T" ExpectedDateTimeSeparator)
+                    , Parser.Advanced.token (Parser.Advanced.Token "t" ExpectedDateTimeSeparator)
+                    , Parser.Advanced.token (Parser.Advanced.Token " " ExpectedDateTimeSeparator)
                         |> Parser.Advanced.backtrackable
                     ]
                 |= timeLocalParser
@@ -237,51 +148,35 @@ dateTimeParser =
                     ]
             , Parser.Advanced.succeed Nothing
             ]
-        |> Parser.Advanced.andThen
-            (\dateTime ->
-                case dateTime of
-                    TimeLocal _ ->
-                        Parser.Advanced.succeed dateTime
-
-                    DateLocal date ->
-                        let
-                            maxDays : Int
-                            maxDays =
-                                daysInMonth date
-                        in
-                        if date.day > maxDays then
-                            Parser.Advanced.problem (PrbDayTooLarge maxDays)
-
-                        else
-                            Parser.Advanced.succeed dateTime
-
-                    DateTimeLocal date ->
-                        let
-                            maxDays : Int
-                            maxDays =
-                                daysInMonth date
-                        in
-                        if date.day > maxDays then
-                            Parser.Advanced.problem (PrbDayTooLarge maxDays)
-
-                        else
-                            Parser.Advanced.succeed dateTime
-
-                    DateTimeOffset date ->
-                        let
-                            maxDays : Int
-                            maxDays =
-                                daysInMonth date
-                        in
-                        if date.day > maxDays then
-                            Parser.Advanced.problem (PrbDayTooLarge maxDays)
-
-                        else
-                            Parser.Advanced.succeed dateTime
-            )
 
 
-dateParser : Parser { year : Int, month : Time.Month, day : Int }
+fakeZone : { hour : Int, minute : Int } -> Time.Zone
+fakeZone offset =
+    Time.customZone
+        (if offset.hour >= 0 then
+            offset.hour * 60 + offset.minute
+
+         else
+            offset.hour * 60 - offset.minute
+        )
+        []
+
+
+checkDay : { a | year : Int, month : Time.Month, day : Int } -> Parser Date.Date
+checkDay date =
+    let
+        maxDays : Int
+        maxDays =
+            daysInMonth date
+    in
+    if date.day > maxDays then
+        Parser.Advanced.problem (DayTooLarge maxDays)
+
+    else
+        Parser.Advanced.succeed (Date.fromCalendarDate date.year date.month date.day)
+
+
+dateParser : Parser Date.Date
 dateParser =
     Parser.Advanced.succeed
         (\year month day ->
@@ -291,20 +186,20 @@ dateParser =
             }
         )
         |= parseDigits 4
-        |. Parser.Advanced.token (Parser.Advanced.Token "-" PrbExpectedDateSeparator)
+        |. Parser.Advanced.token (Parser.Advanced.Token "-" ExpectedDateSeparator)
         |= (parseDigits 2
                 |> Parser.Advanced.andThen
                     (\int ->
-                        case intToMonth int of
-                            Nothing ->
-                                Parser.Advanced.problem PrbInvalidMonth
+                        if int < 1 || int > 12 then
+                            Parser.Advanced.problem InvalidMonth
 
-                            Just month ->
-                                Parser.Advanced.succeed month
+                        else
+                            Parser.Advanced.succeed (Date.numberToMonth int)
                     )
            )
-        |. Parser.Advanced.token (Parser.Advanced.Token "-" PrbExpectedDateSeparator)
-        |= parseDigitsInRange 2 { min = 1, max = 31 } PrbInvalidDay
+        |. Parser.Advanced.token (Parser.Advanced.Token "-" ExpectedDateSeparator)
+        |= parseDigitsInRange 2 { min = 1, max = 31 } InvalidDay
+        |> Parser.Advanced.andThen checkDay
         |> Parser.Advanced.inContext ParsingDate
 
 
@@ -312,16 +207,16 @@ offsetParser : Parser { hour : Int, minute : Int }
 offsetParser =
     Parser.Advanced.oneOf
         [ Parser.Advanced.succeed { hour = 0, minute = 0 }
-            |. Parser.Advanced.token (Parser.Advanced.Token "Z" PrbExpectedZuluOffset)
+            |. Parser.Advanced.token (Parser.Advanced.Token "Z" ExpectedZuluOffset)
         , Parser.Advanced.succeed (\sign hour minute -> { hour = sign hour, minute = minute })
             |= Parser.Advanced.oneOf
                 [ Parser.Advanced.succeed identity
-                    |. Parser.Advanced.token (Parser.Advanced.Token "+" PrbExpectedOffsetSign)
+                    |. Parser.Advanced.token (Parser.Advanced.Token "+" ExpectedOffsetSign)
                 , Parser.Advanced.succeed negate
-                    |. Parser.Advanced.token (Parser.Advanced.Token "-" PrbExpectedOffsetSign)
+                    |. Parser.Advanced.token (Parser.Advanced.Token "-" ExpectedOffsetSign)
                 ]
             |= hourParser
-            |. Parser.Advanced.token (Parser.Advanced.Token ":" PrbExpectedOffsetSeparator)
+            |. Parser.Advanced.token (Parser.Advanced.Token ":" ExpectedOffsetSeparator)
             |= minuteParser
         ]
         |> Parser.Advanced.inContext ParsingOffset
@@ -331,27 +226,29 @@ timeLocalParser :
     Parser
         { hour : Int
         , minute : Int
-        , second : Float
+        , second : Int
+        , millisecond : Int
         }
 timeLocalParser =
     Parser.Advanced.succeed
-        (\hour minute second ->
+        (\hour minute ( second, millisecond ) ->
             { hour = hour
             , minute = minute
             , second = second
+            , millisecond = millisecond
             }
         )
         |= hourParser
-        |. Parser.Advanced.token (Parser.Advanced.Token ":" PrbExpectedTimeSeparator)
+        |. Parser.Advanced.token (Parser.Advanced.Token ":" ExpectedTimeSeparator)
         |= minuteParser
-        |. Parser.Advanced.token (Parser.Advanced.Token ":" PrbExpectedTimeSeparator)
+        |. Parser.Advanced.token (Parser.Advanced.Token ":" ExpectedTimeSeparator)
         |= (Parser.Advanced.succeed Tuple.pair
-                |= parseDigitsInRange 2 { min = 0, max = 59 } PrbInvalidSecond
+                |= parseDigitsInRange 2 { min = 0, max = 59 } InvalidSecond
                 |= Parser.Advanced.oneOf
                     [ Parser.Advanced.succeed Just
-                        |. Parser.Advanced.token (Parser.Advanced.Token "." PrbExpectedFractionalSecondSeparator)
+                        |. Parser.Advanced.token (Parser.Advanced.Token "." ExpectedFractionalSecondSeparator)
                         |= (Parser.Advanced.succeed ()
-                                |. Parser.Advanced.chompIf Char.isDigit PrbExpectedDigit
+                                |. Parser.Advanced.chompIf Char.isDigit ExpectedDigit
                                 |. Parser.Advanced.chompWhile Char.isDigit
                                 |> Parser.Advanced.getChompedString
                            )
@@ -361,15 +258,15 @@ timeLocalParser =
                     (\( second, fracSeconds ) ->
                         case fracSeconds of
                             Nothing ->
-                                Parser.Advanced.succeed (toFloat second)
+                                Parser.Advanced.succeed ( second, 0 )
 
                             Just frac ->
-                                case String.toFloat (String.fromInt second ++ "." ++ frac) of
+                                case String.toInt (String.left 3 (frac ++ "000")) of
                                     Nothing ->
-                                        Parser.Advanced.problem PrbExpectedAFloat
+                                        Parser.Advanced.problem ExpectedAnInt
 
                                     Just f ->
-                                        Parser.Advanced.succeed f
+                                        Parser.Advanced.succeed ( second, f )
                     )
            )
         |> Parser.Advanced.inContext ParsingTime
@@ -383,14 +280,14 @@ parseDigits size =
             (\digits ->
                 case String.toInt digits of
                     Nothing ->
-                        Parser.Advanced.problem PrbExpectedAnInt
+                        Parser.Advanced.problem ExpectedAnInt
 
                     Just i ->
                         Parser.Advanced.succeed i
             )
 
 
-parseDigitsInRange : Int -> { min : Int, max : Int } -> Problem -> Parser Int
+parseDigitsInRange : Int -> { min : Int, max : Int } -> Error -> Parser Int
 parseDigitsInRange size limits limitProblem =
     Parser.Advanced.loop size parseDigitsHelper
         |> Parser.Advanced.getChompedString
@@ -398,7 +295,7 @@ parseDigitsInRange size limits limitProblem =
             (\digits ->
                 case String.toInt digits of
                     Nothing ->
-                        Parser.Advanced.problem PrbExpectedAnInt
+                        Parser.Advanced.problem ExpectedAnInt
 
                     Just i ->
                         if i < limits.min then
@@ -415,107 +312,24 @@ parseDigitsInRange size limits limitProblem =
 parseDigitsHelper : Int -> Parser (Parser.Advanced.Step Int ())
 parseDigitsHelper leftToChomp =
     if leftToChomp < 0 then
-        Parser.Advanced.problem PrbInvalidNegativeDigits
+        Parser.Advanced.problem InvalidNegativeDigits
 
     else if leftToChomp > 0 then
         Parser.Advanced.succeed (Parser.Advanced.Loop (leftToChomp - 1))
-            |. Parser.Advanced.chompIf Char.isDigit PrbExpectedDigit
+            |. Parser.Advanced.chompIf Char.isDigit ExpectedDigit
 
     else
         Parser.Advanced.succeed (Parser.Advanced.Done ())
 
 
-intToMonth : Int -> Maybe Time.Month
-intToMonth i =
-    case i of
-        1 ->
-            Just Time.Jan
-
-        2 ->
-            Just Time.Feb
-
-        3 ->
-            Just Time.Mar
-
-        4 ->
-            Just Time.Apr
-
-        5 ->
-            Just Time.May
-
-        6 ->
-            Just Time.Jun
-
-        7 ->
-            Just Time.Jul
-
-        8 ->
-            Just Time.Aug
-
-        9 ->
-            Just Time.Sep
-
-        10 ->
-            Just Time.Oct
-
-        11 ->
-            Just Time.Nov
-
-        12 ->
-            Just Time.Dec
-
-        _ ->
-            Nothing
-
-
-monthToInt : Time.Month -> Int
-monthToInt month =
-    case month of
-        Time.Jan ->
-            1
-
-        Time.Feb ->
-            2
-
-        Time.Mar ->
-            3
-
-        Time.Apr ->
-            4
-
-        Time.May ->
-            5
-
-        Time.Jun ->
-            6
-
-        Time.Jul ->
-            7
-
-        Time.Aug ->
-            8
-
-        Time.Sep ->
-            9
-
-        Time.Oct ->
-            10
-
-        Time.Nov ->
-            11
-
-        Time.Dec ->
-            12
-
-
 hourParser : Parser Int
 hourParser =
-    parseDigitsInRange 2 { min = 0, max = 23 } PrbInvalidHour
+    parseDigitsInRange 2 { min = 0, max = 23 } InvalidHour
 
 
 minuteParser : Parser Int
 minuteParser =
-    parseDigitsInRange 2 { min = 0, max = 59 } PrbInvalidMinute
+    parseDigitsInRange 2 { min = 0, max = 59 } InvalidMinute
 
 
 isLeapYear : Int -> Bool
@@ -576,13 +390,18 @@ toString dateTime =
             timeToString time
 
         DateLocal date ->
-            dateToString date
+            Date.toIsoString date
 
         DateTimeLocal dateT ->
             dateToString dateT ++ "T" ++ timeToString dateT
 
         DateTimeOffset dateT ->
-            dateToString dateT ++ "T" ++ timeToString dateT ++ offsetToString dateT.offset
+            let
+                parts : Time.Extra.Parts
+                parts =
+                    Time.Extra.posixToParts (fakeZone dateT.offset) dateT.instant
+            in
+            dateToString parts ++ "T" ++ timeToString parts ++ offsetToString dateT.offset
 
 
 offsetToString : { hour : Int, minute : Int } -> String
@@ -606,32 +425,22 @@ dateToString date =
     String.join "-"
         [ String.padLeft 4 '0' (String.fromInt date.year)
         , date.month
-            |> monthToInt
+            |> Date.monthToNumber
             |> padInt2
         , padInt2 date.day
         ]
 
 
-timeToString : { a | hour : Int, minute : Int, second : Float } -> String
+timeToString : { a | hour : Int, minute : Int, second : Int, millisecond : Int } -> String
 timeToString time =
     String.join ":"
         [ padInt2 time.hour
         , padInt2 time.minute
-        , time.second
-            |> String.fromFloat
-            |> String.split "."
-            |> (\seconds ->
-                    case seconds of
-                        [ whole ] ->
-                            [ String.padLeft 2 '0' whole ]
+        , if time.millisecond == 0 then
+            padInt2 time.second
 
-                        [ whole, part ] ->
-                            [ String.padLeft 2 '0' whole, part ]
-
-                        _ ->
-                            seconds
-               )
-            |> String.join "."
+          else
+            padInt2 time.second ++ "." ++ String.padLeft 3 '0' (String.fromInt time.millisecond)
         ]
 
 
