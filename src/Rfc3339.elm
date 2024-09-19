@@ -42,7 +42,6 @@ type Problem
     | PrbExpectedOffsetSign
     | PrbExpectedFractionalSecondSeparator
     | PrbExpectedDigit
-    | PrbExpectedAFloat
     | PrbExpectedAnInt
     | PrbInvalidNegativeDigits
     | PrbInvalidHour
@@ -87,7 +86,6 @@ type Error
     | ExpectedOffsetSign
     | ExpectedFractionalSecondSeparator
     | ExpectedDigit
-    | ExpectedAFloat
     | ExpectedAnInt
     | InvalidNegativeDigits
     | InvalidHour
@@ -154,9 +152,6 @@ toError deadEnd =
 
         PrbExpectedDigit ->
             ExpectedDigit
-
-        PrbExpectedAFloat ->
-            ExpectedAFloat
 
         PrbExpectedAnInt ->
             ExpectedAnInt
@@ -339,7 +334,7 @@ timeLocalParser =
                             Just frac ->
                                 case String.toInt (String.left 3 (frac ++ "000")) of
                                     Nothing ->
-                                        Parser.Advanced.problem PrbExpectedAFloat
+                                        Parser.Advanced.problem PrbExpectedAnInt
 
                                     Just f ->
                                         Parser.Advanced.succeed ( second, f )
