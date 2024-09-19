@@ -3,6 +3,7 @@ module Rfc3339 exposing
     , parse
     , Error(..)
     , toString
+    , dateTimeOffsetParser, dateTimeLocalParser, dateLocalParser, timeLocalParser
     )
 
 {-| Parses a String into an [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) date time format.
@@ -13,22 +14,17 @@ module Rfc3339 exposing
 
 @docs toString
 
+
+# Specific parsers
+
+@docs dateTimeOffsetParser, dateTimeLocalParser, dateLocalParser, timeLocalParser
+
 -}
 
 import Date
 import Parser.Advanced exposing ((|.), (|=))
 import Time
 import Time.Extra
-
-
-type alias Parser a =
-    Parser.Advanced.Parser Context Error a
-
-
-type Context
-    = ParsingDate
-    | ParsingTime
-    | ParsingOffset
 
 
 {-| Represents one of:
@@ -101,7 +97,7 @@ parse input =
             Parser.Advanced.run (Parser.Advanced.map TimeLocal timeLocalParser) input
 
 
-dateTimeParser : Parser DateTime
+dateTimeParser : Parser.Advanced.Parser context Error DateTime
 dateTimeParser =
     Parser.Advanced.succeed
         (\date maybeTimeOffset ->
@@ -132,15 +128,10 @@ dateTimeParser =
                                 , offset = offset
                                 }
         )
-        |= dateParser
+        |= dateLocalParser
         |= Parser.Advanced.oneOf
             [ Parser.Advanced.succeed (\time maybeOffset -> Just ( time, maybeOffset ))
-                |. Parser.Advanced.oneOf
-                    [ Parser.Advanced.token (Parser.Advanced.Token "T" ExpectedDateTimeSeparator)
-                    , Parser.Advanced.token (Parser.Advanced.Token "t" ExpectedDateTimeSeparator)
-                    , Parser.Advanced.token (Parser.Advanced.Token " " ExpectedDateTimeSeparator)
-                        |> Parser.Advanced.backtrackable
-                    ]
+                |. timeSeparatorParser
                 |= timeLocalParser
                 |= Parser.Advanced.oneOf
                     [ Parser.Advanced.map Just offsetParser
@@ -148,6 +139,71 @@ dateTimeParser =
                     ]
             , Parser.Advanced.succeed Nothing
             ]
+
+
+timeSeparatorParser : Parser.Advanced.Parser context Error ()
+timeSeparatorParser =
+    Parser.Advanced.oneOf
+        [ Parser.Advanced.token (Parser.Advanced.Token "T" ExpectedDateTimeSeparator)
+        , Parser.Advanced.token (Parser.Advanced.Token "t" ExpectedDateTimeSeparator)
+        , Parser.Advanced.token (Parser.Advanced.Token " " ExpectedDateTimeSeparator)
+            |> Parser.Advanced.backtrackable
+        ]
+
+
+{-| Parser for a **date time with offset**: e.g. 1970-11-21T09:15:22+01:00.
+-}
+dateTimeOffsetParser :
+    Parser.Advanced.Parser
+        context
+        Error
+        { instant : Time.Posix
+        , offset : { hour : Int, minute : Int }
+        }
+dateTimeOffsetParser =
+    Parser.Advanced.succeed
+        (\date time offset ->
+            let
+                parts : Time.Extra.Parts
+                parts =
+                    { year = Date.year date
+                    , month = Date.month date
+                    , day = Date.day date
+                    , hour = time.hour
+                    , minute = time.minute
+                    , second = time.second
+                    , millisecond = time.millisecond
+                    }
+            in
+            { instant = Time.Extra.partsToPosix (fakeZone offset) parts
+            , offset = offset
+            }
+        )
+        |= dateLocalParser
+        |. timeSeparatorParser
+        |= timeLocalParser
+        |= offsetParser
+
+
+{-| Parser for a **local date time**: e.g. 1970-11-21T09:15:22.
+-}
+dateTimeLocalParser : Parser.Advanced.Parser context Error DateTime
+dateTimeLocalParser =
+    Parser.Advanced.succeed
+        (\date time ->
+            DateTimeLocal
+                { year = Date.year date
+                , month = Date.month date
+                , day = Date.day date
+                , hour = time.hour
+                , minute = time.minute
+                , second = time.second
+                , millisecond = time.millisecond
+                }
+        )
+        |= dateLocalParser
+        |. timeSeparatorParser
+        |= timeLocalParser
 
 
 fakeZone : { hour : Int, minute : Int } -> Time.Zone
@@ -162,7 +218,7 @@ fakeZone offset =
         []
 
 
-checkDay : { a | year : Int, month : Time.Month, day : Int } -> Parser Date.Date
+checkDay : { a | year : Int, month : Time.Month, day : Int } -> Parser.Advanced.Parser context Error Date.Date
 checkDay date =
     let
         maxDays : Int
@@ -176,8 +232,10 @@ checkDay date =
         Parser.Advanced.succeed (Date.fromCalendarDate date.year date.month date.day)
 
 
-dateParser : Parser Date.Date
-dateParser =
+{-| Parser for a **local date**: e.g. 1970-11-21.
+-}
+dateLocalParser : Parser.Advanced.Parser context Error Date.Date
+dateLocalParser =
     Parser.Advanced.succeed
         (\year month day ->
             { year = year
@@ -200,10 +258,9 @@ dateParser =
         |. Parser.Advanced.token (Parser.Advanced.Token "-" ExpectedDateSeparator)
         |= parseDigitsInRange 2 { min = 1, max = 31 } InvalidDay
         |> Parser.Advanced.andThen checkDay
-        |> Parser.Advanced.inContext ParsingDate
 
 
-offsetParser : Parser { hour : Int, minute : Int }
+offsetParser : Parser.Advanced.Parser context Error { hour : Int, minute : Int }
 offsetParser =
     Parser.Advanced.oneOf
         [ Parser.Advanced.succeed { hour = 0, minute = 0 }
@@ -219,11 +276,14 @@ offsetParser =
             |. Parser.Advanced.token (Parser.Advanced.Token ":" ExpectedOffsetSeparator)
             |= minuteParser
         ]
-        |> Parser.Advanced.inContext ParsingOffset
 
 
+{-| Parser for a **local time**: e.g. 09:15:22.
+-}
 timeLocalParser :
-    Parser
+    Parser.Advanced.Parser
+        context
+        Error
         { hour : Int
         , minute : Int
         , second : Int
@@ -269,10 +329,9 @@ timeLocalParser =
                                         Parser.Advanced.succeed ( second, f )
                     )
            )
-        |> Parser.Advanced.inContext ParsingTime
 
 
-parseDigits : Int -> Parser Int
+parseDigits : Int -> Parser.Advanced.Parser context Error Int
 parseDigits size =
     Parser.Advanced.loop size parseDigitsHelper
         |> Parser.Advanced.getChompedString
@@ -287,7 +346,7 @@ parseDigits size =
             )
 
 
-parseDigitsInRange : Int -> { min : Int, max : Int } -> Error -> Parser Int
+parseDigitsInRange : Int -> { min : Int, max : Int } -> Error -> Parser.Advanced.Parser context Error Int
 parseDigitsInRange size limits limitProblem =
     Parser.Advanced.loop size parseDigitsHelper
         |> Parser.Advanced.getChompedString
@@ -309,7 +368,7 @@ parseDigitsInRange size limits limitProblem =
             )
 
 
-parseDigitsHelper : Int -> Parser (Parser.Advanced.Step Int ())
+parseDigitsHelper : Int -> Parser.Advanced.Parser context Error (Parser.Advanced.Step Int ())
 parseDigitsHelper leftToChomp =
     if leftToChomp < 0 then
         Parser.Advanced.problem InvalidNegativeDigits
@@ -322,12 +381,12 @@ parseDigitsHelper leftToChomp =
         Parser.Advanced.succeed (Parser.Advanced.Done ())
 
 
-hourParser : Parser Int
+hourParser : Parser.Advanced.Parser context Error Int
 hourParser =
     parseDigitsInRange 2 { min = 0, max = 23 } InvalidHour
 
 
-minuteParser : Parser Int
+minuteParser : Parser.Advanced.Parser context Error Int
 minuteParser =
     parseDigitsInRange 2 { min = 0, max = 59 } InvalidMinute
 
