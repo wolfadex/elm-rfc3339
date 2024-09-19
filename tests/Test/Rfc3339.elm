@@ -1,5 +1,6 @@
 module Test.Rfc3339 exposing (suite)
 
+import Date
 import Expect
 import Rfc3339
 import Test exposing (Test, describe, test)
@@ -30,19 +31,21 @@ localTimes =
                                 { hour = 0
                                 , minute = 0
                                 , second = 0
+                                , millisecond = 0
                                 }
                             )
                         )
         , test "right after midnight" <|
             \() ->
-                "00:00:00.00001"
+                "00:00:00.001"
                     |> Rfc3339.parse
                     |> Expect.equal
                         (Ok
                             (Rfc3339.TimeLocal
                                 { hour = 0
                                 , minute = 0
-                                , second = 0.00001
+                                , second = 0
+                                , millisecond = 1
                                 }
                             )
                         )
@@ -94,12 +97,7 @@ localDates =
                     |> Rfc3339.parse
                     |> Expect.equal
                         (Ok
-                            (Rfc3339.DateLocal
-                                { year = 1970
-                                , month = Time.Jan
-                                , day = 1
-                                }
-                            )
+                            (Rfc3339.DateLocal (Date.fromCalendarDate 1970 Time.Jan 1))
                         )
         , test "leap  day" <|
             \() ->
@@ -107,12 +105,7 @@ localDates =
                     |> Rfc3339.parse
                     |> Expect.equal
                         (Ok
-                            (Rfc3339.DateLocal
-                                { year = 1988
-                                , month = Time.Feb
-                                , day = 29
-                                }
-                            )
+                            (Rfc3339.DateLocal (Date.fromCalendarDate 1988 Time.Feb 29))
                         )
         , test "bad leap day" <|
             \() ->
@@ -160,6 +153,7 @@ localDateTimes =
                                 , hour = 0
                                 , minute = 0
                                 , second = 0
+                                , millisecond = 0
                                 }
                             )
                         )
@@ -176,6 +170,7 @@ localDateTimes =
                                 , hour = 0
                                 , minute = 0
                                 , second = 0
+                                , millisecond = 0
                                 }
                             )
                         )
@@ -192,6 +187,7 @@ localDateTimes =
                                 , hour = 0
                                 , minute = 0
                                 , second = 0
+                                , millisecond = 0
                                 }
                             )
                         )
@@ -208,12 +204,7 @@ offsetDateTimes =
                     |> Expect.equal
                         (Ok
                             (Rfc3339.DateTimeOffset
-                                { year = 1970
-                                , month = Time.Jan
-                                , day = 1
-                                , hour = 0
-                                , minute = 0
-                                , second = 0
+                                { instant = Time.millisToPosix 0
                                 , offset = { hour = 0, minute = 0 }
                                 }
                             )
@@ -225,12 +216,7 @@ offsetDateTimes =
                     |> Expect.equal
                         (Ok
                             (Rfc3339.DateTimeOffset
-                                { year = 1970
-                                , month = Time.Jan
-                                , day = 1
-                                , hour = 0
-                                , minute = 0
-                                , second = 0
+                                { instant = Time.millisToPosix 0
                                 , offset = { hour = 0, minute = 0 }
                                 }
                             )
@@ -242,12 +228,7 @@ offsetDateTimes =
                     |> Expect.equal
                         (Ok
                             (Rfc3339.DateTimeOffset
-                                { year = 1970
-                                , month = Time.Jan
-                                , day = 1
-                                , hour = 0
-                                , minute = 0
-                                , second = 0
+                                { instant = Time.millisToPosix ((12 * 60 + 34) * 60 * 1000)
                                 , offset = { hour = -12, minute = 34 }
                                 }
                             )
@@ -275,10 +256,10 @@ printing =
                     |> Expect.equal (Ok "00:00:00")
         , test "local time right after midnight" <|
             \() ->
-                "00:00:00.00001"
+                "00:00:00.001"
                     |> Rfc3339.parse
                     |> Result.map Rfc3339.toString
-                    |> Expect.equal (Ok "00:00:00.00001")
+                    |> Expect.equal (Ok "00:00:00.001")
         , test "local date" <|
             \() ->
                 "1970-01-01"
