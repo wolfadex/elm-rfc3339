@@ -22,32 +22,13 @@ import Time.Extra
 
 
 type alias Parser a =
-    Parser.Advanced.Parser Context Problem a
+    Parser.Advanced.Parser Context Error a
 
 
 type Context
     = ParsingDate
     | ParsingTime
     | ParsingOffset
-
-
-type Problem
-    = PrbExpectedDateSeparator
-    | PrbExpectedDateTimeSeparator
-    | PrbExpectedTimeSeparator
-    | PrbExpectedOffsetSeparator
-    | PrbInvalidMonth
-    | PrbDayTooLarge Int
-    | PrbExpectedZuluOffset
-    | PrbExpectedOffsetSign
-    | PrbExpectedFractionalSecondSeparator
-    | PrbExpectedDigit
-    | PrbExpectedAnInt
-    | PrbInvalidNegativeDigits
-    | PrbInvalidHour
-    | PrbInvalidMinute
-    | PrbInvalidSecond
-    | PrbInvalidDay
 
 
 {-| Represents one of:
@@ -112,64 +93,12 @@ parse input =
                 Just ( char, _ ) ->
                     Char.isDigit char
     in
-    Result.mapError (List.map toError) <|
+    Result.mapError (List.map .problem) <|
         if useDateParser then
             Parser.Advanced.run dateTimeParser input
 
         else
             Parser.Advanced.run (Parser.Advanced.map TimeLocal timeLocalParser) input
-
-
-toError : Parser.Advanced.DeadEnd Context Problem -> Error
-toError deadEnd =
-    case deadEnd.problem of
-        PrbExpectedDateSeparator ->
-            ExpectedDateSeparator
-
-        PrbExpectedDateTimeSeparator ->
-            ExpectedDateTimeSeparator
-
-        PrbExpectedTimeSeparator ->
-            ExpectedTimeSeparator
-
-        PrbExpectedOffsetSeparator ->
-            ExpectedOffsetSeparator
-
-        PrbInvalidMonth ->
-            InvalidMonth
-
-        PrbDayTooLarge amt ->
-            DayTooLarge amt
-
-        PrbExpectedZuluOffset ->
-            ExpectedZuluOffset
-
-        PrbExpectedOffsetSign ->
-            ExpectedOffsetSign
-
-        PrbExpectedFractionalSecondSeparator ->
-            ExpectedFractionalSecondSeparator
-
-        PrbExpectedDigit ->
-            ExpectedDigit
-
-        PrbExpectedAnInt ->
-            ExpectedAnInt
-
-        PrbInvalidNegativeDigits ->
-            InvalidNegativeDigits
-
-        PrbInvalidHour ->
-            InvalidHour
-
-        PrbInvalidMinute ->
-            InvalidMinute
-
-        PrbInvalidSecond ->
-            InvalidSecond
-
-        PrbInvalidDay ->
-            InvalidDay
 
 
 dateTimeParser : Parser DateTime
@@ -207,9 +136,9 @@ dateTimeParser =
         |= Parser.Advanced.oneOf
             [ Parser.Advanced.succeed (\time maybeOffset -> Just ( time, maybeOffset ))
                 |. Parser.Advanced.oneOf
-                    [ Parser.Advanced.token (Parser.Advanced.Token "T" PrbExpectedDateTimeSeparator)
-                    , Parser.Advanced.token (Parser.Advanced.Token "t" PrbExpectedDateTimeSeparator)
-                    , Parser.Advanced.token (Parser.Advanced.Token " " PrbExpectedDateTimeSeparator)
+                    [ Parser.Advanced.token (Parser.Advanced.Token "T" ExpectedDateTimeSeparator)
+                    , Parser.Advanced.token (Parser.Advanced.Token "t" ExpectedDateTimeSeparator)
+                    , Parser.Advanced.token (Parser.Advanced.Token " " ExpectedDateTimeSeparator)
                         |> Parser.Advanced.backtrackable
                     ]
                 |= timeLocalParser
@@ -241,7 +170,7 @@ checkDay date =
             daysInMonth date
     in
     if date.day > maxDays then
-        Parser.Advanced.problem (PrbDayTooLarge maxDays)
+        Parser.Advanced.problem (DayTooLarge maxDays)
 
     else
         Parser.Advanced.succeed (Date.fromCalendarDate date.year date.month date.day)
@@ -257,19 +186,19 @@ dateParser =
             }
         )
         |= parseDigits 4
-        |. Parser.Advanced.token (Parser.Advanced.Token "-" PrbExpectedDateSeparator)
+        |. Parser.Advanced.token (Parser.Advanced.Token "-" ExpectedDateSeparator)
         |= (parseDigits 2
                 |> Parser.Advanced.andThen
                     (\int ->
                         if int < 1 || int > 12 then
-                            Parser.Advanced.problem PrbInvalidMonth
+                            Parser.Advanced.problem InvalidMonth
 
                         else
                             Parser.Advanced.succeed (Date.numberToMonth int)
                     )
            )
-        |. Parser.Advanced.token (Parser.Advanced.Token "-" PrbExpectedDateSeparator)
-        |= parseDigitsInRange 2 { min = 1, max = 31 } PrbInvalidDay
+        |. Parser.Advanced.token (Parser.Advanced.Token "-" ExpectedDateSeparator)
+        |= parseDigitsInRange 2 { min = 1, max = 31 } InvalidDay
         |> Parser.Advanced.andThen checkDay
         |> Parser.Advanced.inContext ParsingDate
 
@@ -278,16 +207,16 @@ offsetParser : Parser { hour : Int, minute : Int }
 offsetParser =
     Parser.Advanced.oneOf
         [ Parser.Advanced.succeed { hour = 0, minute = 0 }
-            |. Parser.Advanced.token (Parser.Advanced.Token "Z" PrbExpectedZuluOffset)
+            |. Parser.Advanced.token (Parser.Advanced.Token "Z" ExpectedZuluOffset)
         , Parser.Advanced.succeed (\sign hour minute -> { hour = sign hour, minute = minute })
             |= Parser.Advanced.oneOf
                 [ Parser.Advanced.succeed identity
-                    |. Parser.Advanced.token (Parser.Advanced.Token "+" PrbExpectedOffsetSign)
+                    |. Parser.Advanced.token (Parser.Advanced.Token "+" ExpectedOffsetSign)
                 , Parser.Advanced.succeed negate
-                    |. Parser.Advanced.token (Parser.Advanced.Token "-" PrbExpectedOffsetSign)
+                    |. Parser.Advanced.token (Parser.Advanced.Token "-" ExpectedOffsetSign)
                 ]
             |= hourParser
-            |. Parser.Advanced.token (Parser.Advanced.Token ":" PrbExpectedOffsetSeparator)
+            |. Parser.Advanced.token (Parser.Advanced.Token ":" ExpectedOffsetSeparator)
             |= minuteParser
         ]
         |> Parser.Advanced.inContext ParsingOffset
@@ -310,16 +239,16 @@ timeLocalParser =
             }
         )
         |= hourParser
-        |. Parser.Advanced.token (Parser.Advanced.Token ":" PrbExpectedTimeSeparator)
+        |. Parser.Advanced.token (Parser.Advanced.Token ":" ExpectedTimeSeparator)
         |= minuteParser
-        |. Parser.Advanced.token (Parser.Advanced.Token ":" PrbExpectedTimeSeparator)
+        |. Parser.Advanced.token (Parser.Advanced.Token ":" ExpectedTimeSeparator)
         |= (Parser.Advanced.succeed Tuple.pair
-                |= parseDigitsInRange 2 { min = 0, max = 59 } PrbInvalidSecond
+                |= parseDigitsInRange 2 { min = 0, max = 59 } InvalidSecond
                 |= Parser.Advanced.oneOf
                     [ Parser.Advanced.succeed Just
-                        |. Parser.Advanced.token (Parser.Advanced.Token "." PrbExpectedFractionalSecondSeparator)
+                        |. Parser.Advanced.token (Parser.Advanced.Token "." ExpectedFractionalSecondSeparator)
                         |= (Parser.Advanced.succeed ()
-                                |. Parser.Advanced.chompIf Char.isDigit PrbExpectedDigit
+                                |. Parser.Advanced.chompIf Char.isDigit ExpectedDigit
                                 |. Parser.Advanced.chompWhile Char.isDigit
                                 |> Parser.Advanced.getChompedString
                            )
@@ -334,7 +263,7 @@ timeLocalParser =
                             Just frac ->
                                 case String.toInt (String.left 3 (frac ++ "000")) of
                                     Nothing ->
-                                        Parser.Advanced.problem PrbExpectedAnInt
+                                        Parser.Advanced.problem ExpectedAnInt
 
                                     Just f ->
                                         Parser.Advanced.succeed ( second, f )
@@ -351,14 +280,14 @@ parseDigits size =
             (\digits ->
                 case String.toInt digits of
                     Nothing ->
-                        Parser.Advanced.problem PrbExpectedAnInt
+                        Parser.Advanced.problem ExpectedAnInt
 
                     Just i ->
                         Parser.Advanced.succeed i
             )
 
 
-parseDigitsInRange : Int -> { min : Int, max : Int } -> Problem -> Parser Int
+parseDigitsInRange : Int -> { min : Int, max : Int } -> Error -> Parser Int
 parseDigitsInRange size limits limitProblem =
     Parser.Advanced.loop size parseDigitsHelper
         |> Parser.Advanced.getChompedString
@@ -366,7 +295,7 @@ parseDigitsInRange size limits limitProblem =
             (\digits ->
                 case String.toInt digits of
                     Nothing ->
-                        Parser.Advanced.problem PrbExpectedAnInt
+                        Parser.Advanced.problem ExpectedAnInt
 
                     Just i ->
                         if i < limits.min then
@@ -383,11 +312,11 @@ parseDigitsInRange size limits limitProblem =
 parseDigitsHelper : Int -> Parser (Parser.Advanced.Step Int ())
 parseDigitsHelper leftToChomp =
     if leftToChomp < 0 then
-        Parser.Advanced.problem PrbInvalidNegativeDigits
+        Parser.Advanced.problem InvalidNegativeDigits
 
     else if leftToChomp > 0 then
         Parser.Advanced.succeed (Parser.Advanced.Loop (leftToChomp - 1))
-            |. Parser.Advanced.chompIf Char.isDigit PrbExpectedDigit
+            |. Parser.Advanced.chompIf Char.isDigit ExpectedDigit
 
     else
         Parser.Advanced.succeed (Parser.Advanced.Done ())
@@ -395,12 +324,12 @@ parseDigitsHelper leftToChomp =
 
 hourParser : Parser Int
 hourParser =
-    parseDigitsInRange 2 { min = 0, max = 23 } PrbInvalidHour
+    parseDigitsInRange 2 { min = 0, max = 23 } InvalidHour
 
 
 minuteParser : Parser Int
 minuteParser =
-    parseDigitsInRange 2 { min = 0, max = 59 } PrbInvalidMinute
+    parseDigitsInRange 2 { min = 0, max = 59 } InvalidMinute
 
 
 isLeapYear : Int -> Bool
