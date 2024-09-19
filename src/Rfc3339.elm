@@ -27,12 +27,6 @@ import Time
 import Time.Extra
 
 
-type Context
-    = ParsingDate
-    | ParsingTime
-    | ParsingOffset
-
-
 {-| Represents one of:
 
   - **local time**: e.g. 09:15:22
@@ -100,10 +94,10 @@ parse input =
             Parser.Advanced.run dateTimeParser input
 
         else
-            Parser.Advanced.run (Parser.Advanced.map TimeLocal (Parser.Advanced.inContext ParsingTime timeLocalParser)) input
+            Parser.Advanced.run (Parser.Advanced.map TimeLocal timeLocalParser) input
 
 
-dateTimeParser : Parser.Advanced.Parser Context Error DateTime
+dateTimeParser : Parser.Advanced.Parser context Error DateTime
 dateTimeParser =
     Parser.Advanced.succeed
         (\date maybeTimeOffset ->
@@ -134,13 +128,13 @@ dateTimeParser =
                                 , offset = offset
                                 }
         )
-        |= Parser.Advanced.inContext ParsingDate dateLocalParser
+        |= dateLocalParser
         |= Parser.Advanced.oneOf
             [ Parser.Advanced.succeed (\time maybeOffset -> Just ( time, maybeOffset ))
                 |. timeSeparatorParser
-                |= Parser.Advanced.inContext ParsingTime timeLocalParser
+                |= timeLocalParser
                 |= Parser.Advanced.oneOf
-                    [ Parser.Advanced.map Just (Parser.Advanced.inContext ParsingOffset offsetParser)
+                    [ Parser.Advanced.map Just offsetParser
                     , Parser.Advanced.succeed Nothing
                     ]
             , Parser.Advanced.succeed Nothing
