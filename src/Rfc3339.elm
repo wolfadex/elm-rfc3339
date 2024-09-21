@@ -187,19 +187,18 @@ dateTimeOffsetParser =
 
 {-| Parser for a **local date time**: e.g. 1970-11-21T09:15:22.
 -}
-dateTimeLocalParser : Parser.Advanced.Parser context Error DateTime
+dateTimeLocalParser : Parser.Advanced.Parser context Error Time.Extra.Parts
 dateTimeLocalParser =
     Parser.Advanced.succeed
         (\date time ->
-            DateTimeLocal
-                { year = Date.year date
-                , month = Date.month date
-                , day = Date.day date
-                , hour = time.hour
-                , minute = time.minute
-                , second = time.second
-                , millisecond = time.millisecond
-                }
+            { year = Date.year date
+            , month = Date.month date
+            , day = Date.day date
+            , hour = time.hour
+            , minute = time.minute
+            , second = time.second
+            , millisecond = time.millisecond
+            }
         )
         |= dateLocalParser
         |. timeSeparatorParser
