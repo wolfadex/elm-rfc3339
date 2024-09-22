@@ -30,8 +30,8 @@ import Time.Extra
 {-| Represents one of:
 
   - **local time**: e.g. 09:15:22
-  - **local date**: e.g. 1970-11-21
-  - **local date time**: e.g. 1970-11-21T09:15:22
+  - **local date**: e.g. 1970-11-21 ([Date.Date](https://package.elm-lang.org/packages/justinmimbs/date/4.1.0/Date#Date))
+  - **local date time**: e.g. 1970-11-21T09:15:22 ([Time.Extra.Parts](https://package.elm-lang.org/packages/justinmimbs/time-extra/1.2.0/Time-Extra#Parts))
   - **date time with offset**: e.g. 1970-11-21T09:15:22+01:00
 
 -}
@@ -185,21 +185,20 @@ dateTimeOffsetParser =
         |= offsetParser
 
 
-{-| Parser for a **local date time**: e.g. 1970-11-21T09:15:22.
+{-| Parser for a **local date time**: e.g. 1970-11-21T09:15:22 ([Time.Extra.Parts](https://package.elm-lang.org/packages/justinmimbs/time-extra/1.2.0/Time-Extra#Parts)).
 -}
-dateTimeLocalParser : Parser.Advanced.Parser context Error DateTime
+dateTimeLocalParser : Parser.Advanced.Parser context Error Time.Extra.Parts
 dateTimeLocalParser =
     Parser.Advanced.succeed
         (\date time ->
-            DateTimeLocal
-                { year = Date.year date
-                , month = Date.month date
-                , day = Date.day date
-                , hour = time.hour
-                , minute = time.minute
-                , second = time.second
-                , millisecond = time.millisecond
-                }
+            { year = Date.year date
+            , month = Date.month date
+            , day = Date.day date
+            , hour = time.hour
+            , minute = time.minute
+            , second = time.second
+            , millisecond = time.millisecond
+            }
         )
         |= dateLocalParser
         |. timeSeparatorParser
@@ -232,7 +231,7 @@ checkDay date =
         Parser.Advanced.succeed (Date.fromCalendarDate date.year date.month date.day)
 
 
-{-| Parser for a **local date**: e.g. 1970-11-21.
+{-| Parser for a **local date**: e.g. 1970-11-21 ([Date.Date](https://package.elm-lang.org/packages/justinmimbs/date/4.1.0/Date#Date)).
 -}
 dateLocalParser : Parser.Advanced.Parser context Error Date.Date
 dateLocalParser =
